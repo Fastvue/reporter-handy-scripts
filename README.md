@@ -8,4 +8,6 @@ You can schedule these scripts using Windows Task Scheduler to run at desired ti
 
 This script generates a report for a specified time range in the day, filtered by a list of users and sends an email with the private link to the report, as well as PDF and CSV attachments.
 
+> Example: Generate a report on a class of students, as soon as the class finishes. Use this script to generate a report between 11:00am and 11:45 am, for a specific list of users and schedule it on week days at 11:46am.
+
 Here's a [video](https://www.loom.com/share/21cfc712542d434d803c0034f6accad3?sid=0937bcde-9ce0-48a0-9669-45a66601cef7) on how to use it.
