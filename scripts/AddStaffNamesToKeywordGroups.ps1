@@ -1,16 +1,19 @@
+# This script queries Active Directory for a list of staff names and adds them to a keyword group. 
+# This is useful for schools that want to know when students are searching for staff online to find their social media profiles. 
+ 
  # -------------------- User-Defined Variables --------------------
 
 # Fastvue Reporter API base URL.
-$apiBaseUrl = "http://192.168.20.40/fortigate/_/api?f="
+$apiBaseUrl = "http://your_fastvue_site/_/api?f="
 
 # The Active Directory (AD) server FQDN (Fully Qualified Domain Name) or IP address.
 $adServer = "dc.exmaple.local"
 
-# LDAP Filter for querying AD users.
+# LDAP query for filtering AD users.
 $ldapQuery = "(objectClass=user)"
 
 # Security Groups to import users from. Specify multiple groups as an array. e.g. @("Admin Staff", "Teaching Staff").
-$securityGroups = @()  # If empty, will use only LDAP filter
+$securityGroups = @()  # If empty, will return all users matching the LDAP query.
 
 # AD attribute to use for populating the keywords.
 $adAttribute = "DisplayName"

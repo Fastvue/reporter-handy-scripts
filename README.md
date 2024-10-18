@@ -11,3 +11,9 @@ This script generates a report for a specified time range in the day, filtered b
 > Example: Generate a report on a class of students, as soon as the class finishes. Use this script to generate a report between 11:00am and 11:45 am, for a specific list of users and schedule it on week days at 11:46am.
 
 Here's a [video](https://www.loom.com/share/21cfc712542d434d803c0034f6accad3?sid=0937bcde-9ce0-48a0-9669-45a66601cef7) on how to use it.
+
+## AddStaffNamesToKeywordGroup.ps1
+
+This script queries Active Directory for a list of staff names and adds them to a keyword group. This is useful for schools that want to know when students are searching for staff online to find their social media profiles.
+
+Edit the "User-Defined Variables" section to enter your AD server and optionally specify a LDAP query or list of Security Groups to search. You can change the AD attribute use as the keywords (displayName is used by default), as well as the name of the Keyword Group to import them into.
