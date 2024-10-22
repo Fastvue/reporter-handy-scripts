@@ -22,7 +22,7 @@ $emailRecipient = "your.email@example.com"  # Separate multiple emails with a co
 # Define Filter Values (List of Users)
 $filterUsers = @("User One", "User Two", "User Three")  # Enter users exactly as you see them in Fastvue Reporter.
 
-#### Do not modify below this line (unless you know what you're doing!) ####
+ #### Do not modify below this line (unless you know what you're doing!) ####
 
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
@@ -72,9 +72,37 @@ $reportData = @{
     )
 } | ConvertTo-Json -Depth 3
 
+# Function to check if credentials are needed
+function Get-OptionalCredential {
+    # If the script is running with credentials (such as from Task Scheduler), skip prompting.
+    if (-not $credentials) {
+        # Check if the script is running in an interactive session (e.g., manually by a user)
+        if ($Host.Name -ne "ConsoleHost") {
+            # Prompt for credentials if not provided and running interactively
+            Write-Host "Credentials not detected. Prompting for credentials..."
+            return Get-Credential
+        } else {
+            # Running under Task Scheduler or a non-interactive session. Do not prompt for credentials.
+            Write-Host "No credentials provided, assuming script is running with the correct account context."
+            return $null
+        }
+    }
+}
+
+# Check if the script is running under Windows Task Scheduler or being executed manually
+$credentials = $null
+$credentials = Get-OptionalCredential
+
 # Create the report using the API
 try {
-    $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData
+    if ($credentials) {
+        # Use credentials if available
+        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -Credential $credentials
+    } else {
+        # No credentials, rely on default Windows Task Scheduler account
+        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData
+    }
+
     if (-not $response -or -not $response.Data) {
         throw "Failed to create the report. No response or invalid response received."
     }
@@ -90,7 +118,14 @@ try {
 function Check-ReportStatus($reportId) {
     $getStatusUrl = "$reportGetStatusUrl$reportId"
     try {
-        $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET
+        if ($credentials) {
+            # Use credentials if available
+            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -Credential $credentials
+        } else {
+            # No credentials, rely on default Windows Task Scheduler account
+            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET
+        }
+
         if (-not $statusResponse -or -not $statusResponse.Data) {
             throw "Failed to retrieve report status. No response or invalid response received."
         }
@@ -152,7 +187,14 @@ $emailData = @{
 
 # Share the report via email
 try {
-    $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData
+    if ($credentials) {
+        # Use credentials if available
+        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -Credential $credentials
+    } else {
+        # No credentials, rely on default Windows Task Scheduler account
+        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData
+    }
+
     if (-not $emailResponse) {
         throw "Failed to email the report. No response received."
     }

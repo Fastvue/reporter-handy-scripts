@@ -21,7 +21,7 @@ $adAttribute = "DisplayName"
 # The name of the keyword group to create or update in Fastvue Reporter.
 $keywordGroupName = "Staff Names"
 
-# -------------------- Script Begins --------------------
+ # -------------------- Script Begins --------------------
 
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
@@ -52,6 +52,27 @@ function Start-Logging {
 
 # Call to start logging
 Start-Logging
+
+# -------------------- Function to Check if Credentials Are Needed --------------------
+function Get-OptionalCredential {
+    # If the script is running with credentials (such as from Task Scheduler), skip prompting.
+    if (-not $credentials) {
+        # Check if the script is running in an interactive session (e.g., manually by a user)
+        if ($Host.Name -ne "ConsoleHost") {
+            # Prompt for credentials if not provided and running interactively
+            Write-Host "Credentials not detected. Prompting for credentials..."
+            return Get-Credential
+        } else {
+            # Running under Task Scheduler or a non-interactive session. Do not prompt for credentials.
+            Write-Host "No credentials provided, assuming script is running with the correct account context."
+            return $null
+        }
+    }
+}
+
+# Check if the script is running under Windows Task Scheduler or being executed manually
+$credentials = $null
+$credentials = Get-OptionalCredential
 
 # -------------------- Check and Install Active Directory Module --------------------
 function Check-Install-ADModule {
@@ -149,7 +170,14 @@ $createKeywordGroupUrl = "$apiBaseUrl`Settings.Keywords.AddGroup"
 $updateKeywordsUrl = "$apiBaseUrl`Settings.Keywords.UpdateIncludes"
 
 try {
-    $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -ContentType "application/json" -Body "{}"
+    if ($credentials) {
+        # Use credentials if available
+        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -ContentType "application/json" -Body "{}" -Credential $credentials
+    } else {
+        # No credentials, rely on the current context
+        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -ContentType "application/json" -Body "{}"
+    }
+    
     $existingGroup = $groupsResponse.Data | Where-Object { $_.Name -eq $keywordGroupName }
 
     if ($existingGroup) {
@@ -157,7 +185,11 @@ try {
     } else {
         try {
             $createGroupData = @{ "Name" = $keywordGroupName } | ConvertTo-Json
-            $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -ContentType "application/json" -Body $createGroupData
+            if ($credentials) {
+                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -ContentType "application/json" -Body $createGroupData -Credential $credentials
+            } else {
+                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -ContentType "application/json" -Body $createGroupData
+            }
 
             if ($createGroupResponse.Status -eq 0) {
                 $keywordGroupId = $createGroupResponse.Data.ID
@@ -186,7 +218,13 @@ try {
         "Keywords" = $keywords  # Ensure it's always an array
     } | ConvertTo-Json -Depth 3
 
-    $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -ContentType "application/json" -Body $updateKeywordsData
+    if ($credentials) {
+        # Use credentials if available
+        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -ContentType "application/json" -Body $updateKeywordsData -Credential $credentials
+    } else {
+        # No credentials, rely on the current context
+        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -ContentType "application/json" -Body $updateKeywordsData
+    }
 
     if ($updateResponse.Status -eq 0 -and $updateResponse.Data.Success) {
         Write-Host "Keywords added successfully to group '$keywordGroupName'."
