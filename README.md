@@ -1,8 +1,8 @@
 # reporter-handy-scripts
 
-The `/scripts` folder contains some handy PowerShell scripts that use Fastvue Reporter's APIs to achieve functionality not available out of the box.
+The `/scripts` folder contains some handy scripts that use Fastvue Reporter's APIs to achieve functionality not available out of the box.
 
-You can schedule these scripts using Windows Task Scheduler to run at desired times. Just make sure the user the task runs as is an Administrator for the Fastvue Reporter website.
+The PowerShell scripts can be secheduled using Windows Task Scheduler to run at desired times. Just make sure the user the task runs as is an Administrator for the Fastvue Reporter website.
 
 ## CreateAndEmailReport.ps1
 
