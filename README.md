@@ -17,3 +17,18 @@ Here's a [video](https://www.loom.com/share/21cfc712542d434d803c0034f6accad3?sid
 This script queries Active Directory for a list of staff names and adds them to a keyword group. This is useful for schools that want to know when students are searching for staff online to find their social media profiles.
 
 Edit the "User-Defined Variables" section to enter your AD server and optionally specify a LDAP query or list of Security Groups to search. You can change the AD attribute use as the keywords (displayName is used by default), as well as the name of the Keyword Group to import them into.
+
+## CloseOpenIndexes
+
+This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database, excluding today’s and yesterday’s indexes. Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen these indexes when needed (e.g., when running reports on older dates).
+
+Instructions:
+
+1. Update the `baseURL` variable to match your Fastvue Reporter URL.
+2. In Chrome, go to your Fastvue Reporter's web interface, and navigate to **Settings > Diagnostics > Database**.
+   - If the database status is "Bad" or "Unknown," restart the Fastvue Reporter service in **services.msc**
+   - Wait for the status to show either "Connected", "Waiting for index recovery", "Preparing Elasticsearch" or 'Operational"
+3. Open Chrome DevTools:
+   - Press `F12` or `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (Mac).
+4. Go to the **Console** tab, paste the script, and press `Enter`.
+   \*/
