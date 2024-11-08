@@ -18,7 +18,7 @@ This script queries Active Directory for a list of staff names and adds them to 
 
 Edit the "User-Defined Variables" section to enter your AD server and optionally specify a LDAP query or list of Security Groups to search. You can change the AD attribute use as the keywords (displayName is used by default), as well as the name of the Keyword Group to import them into.
 
-## CloseOpenIndexes
+## CloseOpenIndexes.js
 
 This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database, excluding today’s and yesterday’s indexes. Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen these indexes when needed (e.g., when running reports on older dates).
 
