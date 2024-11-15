@@ -12,7 +12,10 @@
 		5. Copy and paste the entire script into the console and press Enter
 		6. A success message will be displayed in the console if the indices were closed successfully.
 			An error message will be displayed if there was an issue closing the indices.
-  */
+	
+		Here's a video on how to use it: https://www.loom.com/share/8eaeb7cbfebb4099af0b7ee242c527b9
+	
+			*/
 
 	try {
 		// Construct the URL dynamically using the current window's location
