@@ -20,15 +20,13 @@ Edit the "User-Defined Variables" section to enter your AD server and optionally
 
 ## CloseOpenIndexes.js
 
-This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database, excluding today’s and yesterday’s indexes. Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen these indexes when needed (e.g., when running reports on older dates).
+This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database. Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen indexes when needed. You'll notice today's and yesterday's indexes will automatically re-open after running this script, as Fastvue Reporter opens these to import logs and run queries for the live dashboards.
 
 Instructions:
 
-1. Update the `baseURL` variable to match your Fastvue Reporter URL.
-2. In Chrome, go to your Fastvue Reporter's web interface, and navigate to **Settings > Diagnostics > Database**.
-   - If the database status is "Bad" or "Unknown," restart the Fastvue Reporter service in **services.msc**
-   - Wait for the status to show either "Connected", "Waiting for index recovery", "Preparing Elasticsearch" or 'Operational"
-3. Open Chrome DevTools:
-   - Press `F12` or `Ctrl+Shift+I` (Windows/Linux) or `Cmd+Option+I` (Mac).
-4. Go to the **Console** tab, paste the script, and press `Enter`.
-   \*/
+1. In Fastvue Reporter, go to Settings > Diagnostic > Database and note the Cluster URI
+2. Remote onto the Fastvue Server, open Chrome and enter the Cluster URI into the address bar.
+3. Open Chrome's developer tools by pressing F12 or right-clicking and selecting "Inspect"
+4. Navigate to the "Console" tab
+5. Copy and paste the entire script into the console and press Enter
+6. A success message will be displayed in the console if the indices were closed successfully. An error message will be displayed if there was an issue closing the indices.
