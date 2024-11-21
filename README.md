@@ -18,17 +18,15 @@ This script queries Active Directory for a list of staff names and adds them to 
 
 Edit the "User-Defined Variables" section to enter your AD server and optionally specify a LDAP query or list of Security Groups to search. You can change the AD attribute use as the keywords (displayName is used by default), as well as the name of the Keyword Group to import them into.
 
-## CloseOpenIndexes.js
+## CloseOpenIndexes.ps1
 
-This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database. Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen indexes when needed. You'll notice today's and yesterday's indexes will automatically re-open after running this script, as Fastvue Reporter opens these to import logs and run queries for the live dashboards.
+This script closes all open indexes (dates) in Fastvue Reporter's Elasticsearch database.
+Closing indexes frees up memory resources, and Fastvue Reporter will automatically reopen indexes when needed.
+You'll notice today's and yesterday's indexes will automatically re-open after running this script,
+as Fastvue Reporter opens these to import logs and run queries for the live dashboards.
 
 Instructions:
 
 1. In Fastvue Reporter, go to Settings > Diagnostic > Database and note the Cluster URI
-2. Remote onto the Fastvue Server, open Chrome and enter the Cluster URI into the address bar.
-3. Open Chrome's developer tools by pressing F12 or right-clicking and selecting "Inspect"
-4. Navigate to the "Console" tab
-5. Copy and paste the entire script into the console and press Enter
-6. A success message will be displayed in the console if the indices were closed successfully. An error message will be displayed if there was an issue closing the indices.
-
-Here's a [video](https://www.loom.com/share/8eaeb7cbfebb4099af0b7ee242c527b9) on how to use it.
+2. Enter the cluster URI in the $ElasticsearchUrl variable below
+3. Log into the Fastvue server and run this script in PowerShell
