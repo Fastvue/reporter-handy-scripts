@@ -22,16 +22,83 @@ $emailRecipient = "your.email@example.com"  # Separate multiple emails with a co
 # Define Filter Values (List of Users)
 $filterUsers = @("User One", "User Two", "User Three")  # Enter users exactly as you see them in Fastvue Reporter.
 
- #### Do not modify below this line (unless you know what you're doing!) ####
+#### Do not modify below this line (unless you know what you're doing!) ####
 
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
 
-# Define the log file path in the same directory as the script
-$logFile = Join-Path $scriptDirectory "CreateAndEmailReport-output.log"
+# Function to get an available log file path
+function Get-AvailableLogPath {
+    param($basePath)
+    
+    # Try the base path first
+    if (-not (Test-Path $basePath)) {
+        return $basePath
+    }
+    
+    # Check if existing file is locked
+    try {
+        $fileStream = [System.IO.File]::Open($basePath, 'Open', 'Write', 'None')
+        $fileStream.Close()
+        $fileStream.Dispose()
+        return $basePath
+    } catch {
+        # If file is locked, try numbered versions
+        $counter = 1
+        $directory = [System.IO.Path]::GetDirectoryName($basePath)
+        $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($basePath)
+        $extension = [System.IO.Path]::GetExtension($basePath)
+        
+        do {
+            $newPath = Join-Path $directory "$baseFileName-$counter$extension"
+            if (-not (Test-Path $newPath)) {
+                return $newPath
+            }
+            
+            try {
+                $fileStream = [System.IO.File]::Open($newPath, 'Open', 'Write', 'None')
+                $fileStream.Close()
+                $fileStream.Dispose()
+                return $newPath
+            } catch {
+                $counter++
+            }
+        } while ($true)
+    }
+}
 
-# Redirect output and errors to the log file
-Start-Transcript -Path $logFile
+# Initialize log file path
+$baseLogFile = Join-Path $scriptDirectory "CreateAndEmailReport-output.log"
+$script:logFile = Get-AvailableLogPath $baseLogFile
+
+# Function to write to both console and log file
+function Write-Log {
+    param($Message)
+    
+    # Get current timestamp
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    
+    # Create the log message
+    $logMessage = "$timestamp - $Message"
+    
+    # Write to console
+    Write-Host $logMessage
+    
+    # Append to log file
+    try {
+        Add-Content -Path $script:logFile -Value $logMessage -ErrorAction Stop
+    } catch {
+        # If writing fails, try to get a new log file
+        $script:logFile = Get-AvailableLogPath $baseLogFile
+        try {
+            Add-Content -Path $script:logFile -Value "=== Log continued from previous file ===" -ErrorAction Stop
+            Add-Content -Path $script:logFile -Value $logMessage -ErrorAction Stop
+            Write-Host "Note: Switched to new log file: $($script:logFile)"
+        } catch {
+            Write-Host "Warning: Unable to write to any log file: $_"
+        }
+    }
+}
 
 $reportCreateUrl = "$apiBaseUrl`Reports.Create"
 $reportGetStatusUrl = "$apiBaseUrl`Reports.GetReport&id="
@@ -72,45 +139,34 @@ $reportData = @{
     )
 } | ConvertTo-Json -Depth 3
 
-# Function to check if credentials are needed
-function Get-OptionalCredential {
-    # If the script is running with credentials (such as from Task Scheduler), skip prompting.
-    if (-not $credentials) {
-        # Check if the script is running in an interactive session (e.g., manually by a user)
-        if ($Host.Name -ne "ConsoleHost") {
-            # Prompt for credentials if not provided and running interactively
-            Write-Host "Credentials not detected. Prompting for credentials..."
-            return Get-Credential
-        } else {
-            # Running under Task Scheduler or a non-interactive session. Do not prompt for credentials.
-            Write-Host "No credentials provided, assuming script is running with the correct account context."
-            return $null
-        }
+# Function to get credentials
+function Get-UserCredential {
+    if ([Environment]::UserInteractive) {
+        Write-Log "Please enter your credentials:"
+        return Microsoft.PowerShell.Security\Get-Credential
+    } else {
+        Write-Log "Running in non-interactive mode. Using default credentials."
+        return $null
     }
 }
 
-# Check if the script is running under Windows Task Scheduler or being executed manually
-$credentials = $null
-$credentials = Get-OptionalCredential
+# Get credentials
+$credentials = Get-UserCredential
 
 # Create the report using the API
 try {
     if ($credentials) {
-        # Use credentials if available
         $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -Credential $credentials
     } else {
-        # No credentials, rely on default Windows Task Scheduler account
-        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData
+        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -UseDefaultCredentials
     }
-
     if (-not $response -or -not $response.Data) {
         throw "Failed to create the report. No response or invalid response received."
     }
     $reportId = $response.Data
-    Write-Host "Report created successfully. Report ID: $reportId"
+    Write-Log "Report created successfully. Report ID: $reportId"
 } catch {
-    Write-Host "Error: Failed to create the report. $_"
-    Stop-Transcript
+    Write-Log "Error: Failed to create the report. $_"
     exit 1
 }
 
@@ -119,20 +175,17 @@ function Check-ReportStatus($reportId) {
     $getStatusUrl = "$reportGetStatusUrl$reportId"
     try {
         if ($credentials) {
-            # Use credentials if available
             $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -Credential $credentials
         } else {
-            # No credentials, rely on default Windows Task Scheduler account
-            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET
+            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -UseDefaultCredentials
         }
-
+        
         if (-not $statusResponse -or -not $statusResponse.Data) {
             throw "Failed to retrieve report status. No response or invalid response received."
         }
         return $statusResponse
     } catch {
-        Write-Host "Error: Failed to retrieve report status. $_"
-        Stop-Transcript
+        Write-Log "Error: Failed to retrieve report status. $_"
         exit 1
     }
 }
@@ -147,15 +200,14 @@ while ($status -eq "Processing") {
     $processProgress = $reportStatus.Data.ProcessProgress * 100
     $status = $reportStatus.Data.ProcessStatus
     $statusMessage = $reportStatus.Data.ProcessStatusMessage
-    Write-Host "Report Status: $statusMessage ($([math]::Round($processProgress, 2))%)"
+    Write-Log "Report Status: $statusMessage ($([math]::Round($processProgress, 2))%)"
     
     if ($status -eq "Completed") {
-        Write-Host "Report generation completed successfully."
+        Write-Log "Report generation completed successfully."
         break
     }
     elseif ($status -eq "Failed" -or $reportStatus.Data.ProcessError) {
-        Write-Host "Report generation failed. Error: $($reportStatus.Data.ProcessError)"
-        Stop-Transcript
+        Write-Log "Report generation failed. Error: $($reportStatus.Data.ProcessError)"
         exit 1
     }
 
@@ -188,23 +240,16 @@ $emailData = @{
 # Share the report via email
 try {
     if ($credentials) {
-        # Use credentials if available
         $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -Credential $credentials
     } else {
-        # No credentials, rely on default Windows Task Scheduler account
-        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData
+        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -UseDefaultCredentials
     }
-
+    
     if (-not $emailResponse) {
         throw "Failed to email the report. No response received."
     }
-    Write-Host "Report emailed successfully to: $emailRecipient"
+    Write-Log "Report emailed successfully to: $emailRecipient"
 } catch {
-    Write-Host "Error: Failed to email the report. $_"
-    Stop-Transcript
+    Write-Log "Error: Failed to email the report. $_"
     exit 1
 }
-
-# End the transcript to stop logging
-Stop-Transcript
- 

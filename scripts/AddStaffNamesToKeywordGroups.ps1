@@ -8,7 +8,7 @@
 $apiBaseUrl = "http://your_fastvue_site/_/api?f="
 
 # The Active Directory (AD) server FQDN (Fully Qualified Domain Name) or IP address.
-$adServer = "dc.exmaple.local"
+$adServer = "dc.example.local"
 
 # LDAP query for filtering AD users.
 $ldapQuery = "(objectClass=user)"
@@ -27,42 +27,111 @@ $keywordGroupName = "Staff Names"
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
 $scriptName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name)
-$logFile = Join-Path $scriptDirectory "$scriptName-output.log"
-$transcriptionRunning = $false
-$useCredential = $false
 
-# -------------------- Centralized Error Logging --------------------
+# Function to get an available log file path
+function Get-AvailableLogPath {
+    param($basePath)
+    
+    # Try the base path first
+    if (-not (Test-Path $basePath)) {
+        return $basePath
+    }
+    
+    # Check if existing file is locked
+    try {
+        $fileStream = [System.IO.File]::Open($basePath, 'Open', 'Write', 'None')
+        $fileStream.Close()
+        $fileStream.Dispose()
+        return $basePath
+    } catch {
+        # If file is locked, try numbered versions
+        $counter = 1
+        $directory = [System.IO.Path]::GetDirectoryName($basePath)
+        $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($basePath)
+        $extension = [System.IO.Path]::GetExtension($basePath)
+        
+        do {
+            $newPath = Join-Path $directory "$baseFileName-$counter$extension"
+            if (-not (Test-Path $newPath)) {
+                return $newPath
+            }
+            
+            try {
+                $fileStream = [System.IO.File]::Open($newPath, 'Open', 'Write', 'None')
+                $fileStream.Close()
+                $fileStream.Dispose()
+                return $newPath
+            } catch {
+                $counter++
+            }
+        } while ($true)
+    }
+}
+
+# Initialize log file path
+$baseLogFile = Join-Path $scriptDirectory "$scriptName-output.log"
+$script:logFile = Get-AvailableLogPath $baseLogFile
+
+# Function to write to both console and log file
+function Write-Log {
+    param($Message)
+    
+    # Get current timestamp
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    
+    # Create the log message
+    $logMessage = "$timestamp - $Message"
+    
+    # Write to console
+    Write-Host $logMessage
+    
+    # Append to log file
+    try {
+        Add-Content -Path $script:logFile -Value $logMessage -ErrorAction Stop
+    } catch {
+        # If writing fails, try to get a new log file
+        $script:logFile = Get-AvailableLogPath $baseLogFile
+        try {
+            Add-Content -Path $script:logFile -Value "=== Log continued from previous file ===" -ErrorAction Stop
+            Add-Content -Path $script:logFile -Value $logMessage -ErrorAction Stop
+            Write-Host "Note: Switched to new log file: $($script:logFile)"
+        } catch {
+            Write-Host "Warning: Unable to write to any log file: $_"
+        }
+    }
+}
+
+# Function to log errors and exit
 function Log-Error {
     param (
         [string]$message,
         [string]$errorDetail
     )
-    Write-Host "ERROR: $message. Details: $errorDetail" -ForegroundColor Red
-    if ($transcriptionRunning) { Stop-Transcript }
+    Write-Log "ERROR: $message. Details: $errorDetail"
     exit 1
 }
 
-# -------------------- Start Logging --------------------
-function Start-Logging {
-    try {
-        Start-Transcript -Path $logFile
-        $transcriptionRunning = $true
-        Write-Host "Transcription started, logging to $logFile"
-    } catch {
-        Write-Host "Transcription not supported or failed. Proceeding without transcription."
+# Function to get credentials
+function Get-UserCredential {
+    if ([Environment]::UserInteractive) {
+        Write-Log "Please enter your credentials:"
+        return Microsoft.PowerShell.Security\Get-Credential
+    } else {
+        Write-Log "Running in non-interactive mode. Using default credentials."
+        return $null
     }
 }
 
-# Call to start logging
-Start-Logging
+# Replace the existing credential management section with:
+$credentials = Get-UserCredential
 
 # -------------------- Check and Install Active Directory Module --------------------
 function Check-Install-ADModule {
     if (Get-Module -ListAvailable -Name ActiveDirectory) {
-        Write-Host "Active Directory module is already installed."
+        Write-Log "Active Directory module is already installed."
         Import-Module ActiveDirectory
     } else {
-        Write-Host "Active Directory module not found. Attempting to install..."
+        Write-Log "Active Directory module not found. Attempting to install..."
         try {
             if (Get-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction SilentlyContinue) {
                 Install-WindowsFeature -Name "RSAT-AD-PowerShell"
@@ -72,7 +141,7 @@ function Check-Install-ADModule {
                 Log-Error "Failed to install Active Directory module" "Manual installation required"
             }
             Import-Module ActiveDirectory
-            Write-Host "Active Directory module installed and imported successfully."
+            Write-Log "Active Directory module installed and imported successfully."
         } catch {
             Log-Error "Failed to import the Active Directory module" $_
         }
@@ -81,29 +150,6 @@ function Check-Install-ADModule {
 
 # Call the function to check and install the AD module if necessary
 Check-Install-ADModule
-
-# -------------------- Credential Management --------------------
-# Function to determine if the script is running interactively
-function Is-Interactive {
-    return ($Host.UI.RawUI.KeyAvailable -eq $true)
-}
-
-# Function to get credentials only if running interactively
-function Get-Credentials {
-    if (Is-Interactive) {
-        Write-Host "Credentials not detected. Prompting for credentials..."
-        $credential = Get-Credential
-        Write-Host "Username entered: $($credential.UserName)"
-        $useCredential = $true
-        return $credential
-    } else {
-        Write-Host "Running in non-interactive mode. Using default credentials."
-        return $null
-    }
-}
-
-# Get credentials (only prompts if running interactively)
-$credential = Get-Credentials
 
 # -------------------- Retrieve Users from Security Groups --------------------
 function Get-ADUsersFromGroups {
@@ -116,18 +162,18 @@ function Get-ADUsersFromGroups {
 
     if ($securityGroups.Count -gt 0) {
         try {
-            Write-Host "Querying users from security groups: $($securityGroups -join ', ')"
+            Write-Log "Querying users from security groups: $($securityGroups -join ', ')"
             
             foreach ($group in $securityGroups) {
                 try {
-                    Write-Host "Querying security group: $group"
+                    Write-Log "Querying security group: $group"
                     # Get members of the security group
                     $groupMembers = Get-ADGroupMember -Identity $group -Server $adServer | Where-Object { $_.objectClass -eq 'user' }
                     if ($groupMembers) {
-                        Write-Host "Found $($groupMembers.Count) members in security group '$group'"
+                        Write-Log "Found $($groupMembers.Count) members in security group '$group'"
                         $users += $groupMembers
                     } else {
-                        Write-Host "No members found in security group '$group'"
+                        Write-Log "No members found in security group '$group'"
                     }
                 } catch {
                     Log-Error "Error querying security group '$group'" $_
@@ -137,7 +183,7 @@ function Get-ADUsersFromGroups {
             Log-Error "Error retrieving users from Active Directory groups" $_
         }
     } else {
-        Write-Host "No security groups specified."
+        Write-Log "No security groups specified."
     }
 
     return $users | Sort-Object -Unique
@@ -154,7 +200,7 @@ function FilterUsersByLDAP {
     $filteredUsers = @()
 
     if ($users.Count -gt 0 -and $ldapQuery) {
-        Write-Host "Applying LDAP query filter to group members using Get-ADUser."
+        Write-Log "Applying LDAP query filter to group members using Get-ADUser."
         try {
             $distinguishedNames = $users | ForEach-Object { $_.DistinguishedName }
 
@@ -164,14 +210,14 @@ function FilterUsersByLDAP {
             }
 
             # Output the filtered users for debugging
-            Write-Host "Filtered Users after LDAP Query:"
-            $filteredUsers | ForEach-Object { Write-Host "DisplayName: $($_.DisplayName), DistinguishedName: $($_.DistinguishedName)" }
+            Write-Log "Filtered Users after LDAP Query:"
+            $filteredUsers | ForEach-Object { Write-Log "DisplayName: $($_.DisplayName), DistinguishedName: $($_.DistinguishedName)" }
 
         } catch {
             Log-Error "Error applying LDAP filter to the retrieved users" $_
         }
     } else {
-        Write-Host "No users to filter or no LDAP query specified."
+        Write-Log "No users to filter or no LDAP query specified."
     }
 
     return $filteredUsers | Sort-Object -Unique
@@ -180,15 +226,15 @@ function FilterUsersByLDAP {
 # -------------------- Main Logic --------------------
 # Step 1: Check if security groups are specified, if not, directly query AD with the LDAP filter.
 if ($securityGroups.Count -eq 0) {
-    Write-Host "No security groups specified. Querying AD directly using LDAP filter."
+    Write-Log "No security groups specified. Querying AD directly using LDAP filter."
 
     try {
         # Query AD directly using the LDAP filter when no security groups are specified
         $filteredUsers = Get-ADUser -LDAPFilter $ldapQuery -Server $adServer -Properties DisplayName
 
         # Output the filtered users for debugging
-        Write-Host "Filtered Users after LDAP Query:"
-        $filteredUsers | ForEach-Object { Write-Host "DisplayName: $($_.DisplayName), DistinguishedName: $($_.DistinguishedName)" }
+        Write-Log "Filtered Users after LDAP Query:"
+        $filteredUsers | ForEach-Object { Write-Log "DisplayName: $($_.DisplayName), DistinguishedName: $($_.DistinguishedName)" }
 
     } catch {
         Log-Error "Error querying AD directly using LDAP filter" $_
@@ -206,7 +252,7 @@ if ($securityGroups.Count -eq 0) {
 
 }
 
-Write-Host "Found $($displayNames.Count) unique users after applying LDAP filter."
+Write-Log "Found $($displayNames.Count) unique users after applying LDAP filter."
 
 # -------------------- Fastvue Reporter Keyword Group Logic --------------------
 
@@ -215,9 +261,9 @@ $createKeywordGroupUrl = "$apiBaseUrl`Settings.Keywords.AddGroup"
 $updateKeywordsUrl = "$apiBaseUrl`Settings.Keywords.UpdateIncludes"
 
 try {
-    Write-Host "Checking if the keyword group '$keywordGroupName' already exists..."
-    if ($useCredential -and $credential) {
-        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -Credential $credential -ContentType "application/json" -Body "{}"
+    Write-Log "Checking if the keyword group '$keywordGroupName' already exists..."
+    if ($credentials) {
+        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -Credential $credentials -ContentType "application/json" -Body "{}"
     } else {
         # Use default credentials if running under Task Scheduler
         $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body "{}"
@@ -226,21 +272,21 @@ try {
     $existingGroup = $groupsResponse.Data | Where-Object { $_.Name -eq $keywordGroupName }
 
     if ($existingGroup) {
-        Write-Host "Keyword group '$keywordGroupName' exists. Group ID: $($existingGroup.ID)"
+        Write-Log "Keyword group '$keywordGroupName' exists. Group ID: $($existingGroup.ID)"
         $keywordGroupId = $existingGroup.ID
     } else {
-        Write-Host "Keyword group '$keywordGroupName' does not exist. Proceeding to create the group."
+        Write-Log "Keyword group '$keywordGroupName' does not exist. Proceeding to create the group."
         try {
             $createGroupData = @{ "Name" = $keywordGroupName } | ConvertTo-Json
-            if ($useCredential) {
-                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -Credential $credential -ContentType "application/json" -Body $createGroupData
+            if ($credentials) {
+                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -Credential $credentials -ContentType "application/json" -Body $createGroupData
             } else {
                 $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body $createGroupData
             }
 
             if ($createGroupResponse.Status -eq 0) {
                 $keywordGroupId = $createGroupResponse.Data.ID
-                Write-Host "Keyword group created successfully. Group ID: $keywordGroupId"
+                Write-Log "Keyword group created successfully. Group ID: $keywordGroupId"
             } else {
                 Log-Error "Unexpected error while creating keyword group" $createGroupResponse
             }
@@ -260,8 +306,8 @@ $keywords = @($displayNames | ForEach-Object {
     }
 })
 
-Write-Host "Constructed keywords for update:"
-$keywords | ForEach-Object { Write-Host "Keyword: $($_.Keyword), WholeWord: $($_.WholeWord)" }
+Write-Log "Constructed keywords for update:"
+$keywords | ForEach-Object { Write-Log "Keyword: $($_.Keyword), WholeWord: $($_.WholeWord)" }
 
 try {
     $updateKeywordsData = @{
@@ -270,23 +316,18 @@ try {
     } | ConvertTo-Json -Depth 3
 
     
-    if ($useCredential) {
-        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -Credential $credential -ContentType "application/json" -Body $updateKeywordsData
+    if ($credentials) {
+        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -Credential $credentials -ContentType "application/json" -Body $updateKeywordsData
     } else {
         $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body $updateKeywordsData
     }
 
     if ($updateResponse.Status -eq 0 -and $updateResponse.Data.Success) {
-        Write-Host "Keywords added successfully to group '$keywordGroupName'."
+        Write-Log "Keywords added successfully to group '$keywordGroupName'."
     } else {
         Log-Error "Failed to add keywords to the group" $updateResponse
     }
 } catch {
     Log-Error "Error updating keywords in Fastvue Reporter" $_
-}
-
-# -------------------- Stop Logging --------------------
-if ($transcriptionRunning) {
-    Stop-Transcript
 }
  
