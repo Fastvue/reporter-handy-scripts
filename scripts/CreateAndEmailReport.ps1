@@ -1,7 +1,9 @@
-# This script generates a report for a specified time range in the day, 
-# filtered by a list of users and sends an email with the private link to the report, 
+# This script generates a report for a specified time range, 
+# with optional filters and sends an email with the private link to the report, 
 # as well as PDF and CSV attachments.
 # Here's a video on how to use it: https://www.loom.com/share/21cfc712542d434d803c0034f6accad3?sid=0937bcde-9ce0-48a0-9669-45a66601cef7
+
+# UPDATE: 04/02/2025 - Added report duration options and more flexible filtering options to the user modifiable part of the script (not detailed in video above)
 
 # Define API Base URL
 $apiBaseUrl = "http://your_fastvue_site/_/api?f="
@@ -9,9 +11,15 @@ $apiBaseUrl = "http://your_fastvue_site/_/api?f="
 # Define Report Type: Can be "Internet Usage", "Safeguarding", "IT Network and Security", "All Usage" or "Activity"
 $reportType = "Internet Usage"  # Change this to the desired report type above
 
-# Define time variables
-$startTime = "11:00:00"  # Start time of the report
-$endTime = "12:00:00"    # End time of the report
+# Define whether to include the current day in the report
+$includeCurrentDay = $false  # Set to $true to include today in the report
+
+# Define the report duration
+$reportDuration = "Week"  # Options: "Day", "Week", "Month", or specify a custom number of days like "14" for two weeks.
+
+# Define time variables (Only affects the time on the first and last day of the report. Leave both values as 00:00:00 for 'all day') 
+$startTime = "00:00:00"  # Start time of the report - leave as 00:00:00 to start at midnight
+$endTime = "00:00:00"    # End time of the report - leave as 00:00:00 to end at midnight
 
 # Define report title
 $baseReportTitle = "$reportType Report: Class ABC"  # E.g. Internet Usage Report: Class ABC
@@ -19,10 +27,103 @@ $baseReportTitle = "$reportType Report: Class ABC"  # E.g. Internet Usage Report
 # Define Email Recipient(s)
 $emailRecipient = "your.email@example.com"  # Separate multiple emails with a comma (,) or semi-colon (;)
 
-# Define Filter Values (List of Users)
-$filterUsers = @("User One", "User Two", "User Three")  # Enter users exactly as you see them in Fastvue Reporter.
+# Define Filters
+# To apply no filters, leave the $reportFilters array empty: @()
+
+# Available operators:
+#   Equal, NotEqual, StartsWith, NotStartsWith, EndsWith, NotEndsWith,
+#   Contains, NotContains, ContainsWholeWord, NotContainsWholeWord,
+#   InKeywordGroup, NotInKeywordGroup, InSubnet, NotInSubnet,
+#   GreaterThan, GreaterOrEqual, LessThan, LessOrEqual
+
+$reportFilters = @(
+    # Uncomment and modify the following lines to add filters.
+    # @{
+    #     "Field" = "Security Group"
+    #     "Operator" = "Equal"
+    #     "Values" = @("Group One", "Group Two", "Group Three")
+    # },
+    # @{
+    #     "Field" = "Origin Domain"
+    #     "Operator" = "NotEqual"
+    #     "Values" = @("microsoft.com", "windowsupdate.com", "adobe.com")
+    # }
+)
 
 #### Do not modify below this line (unless you know what you're doing!) ####
+
+# Convert user-friendly filters to the required format
+$filters = @()
+if ($reportFilters.Count -gt 0) {
+    foreach ($userFilter in $reportFilters) {
+        $filters += @{
+            "Type" = "Value"
+            "Semantic" = $userFilter.Field  
+            "Operator" = $userFilter.Operator
+            "Values" = $userFilter.Values
+        }
+    }
+}
+
+# Calculate start and end dates based on the report duration
+switch ($reportDuration) {
+    "Day" {
+        if ($includeCurrentDay) {
+            $startDate = Get-Date
+            $endDate = Get-Date
+        } else {
+            $startDate = (Get-Date).AddDays(-1)  # Yesterday
+            $endDate = (Get-Date).AddDays(-1)    # Yesterday
+        }
+    }
+    "Week" {
+        if ($includeCurrentDay) {
+            $endDate = Get-Date
+            $startDate = $endDate.AddDays(-6)  # -6 for 7 days total
+        } else {
+            $endDate = (Get-Date).AddDays(-1)  # Yesterday
+            $startDate = $endDate.AddDays(-6)  # -6 for 7 days total
+        }
+    }
+    "Month" {
+        if ($includeCurrentDay) {
+            $endDate = Get-Date
+            $startDate = (Get-Date -Year $endDate.Year -Month $endDate.Month -Day 1).AddMonths(-1)
+        } else {
+            # For previous month, go from 1st to last day of previous month
+            $endDate = (Get-Date -Day 1).AddDays(-1)  # Last day of previous month
+            $startDate = $endDate.AddDays(-($endDate.Day - 1))  # First day of previous month
+        }
+    }
+    default {
+        if ($reportDuration -as [int]) {
+            $endDate = if ($includeCurrentDay) { Get-Date } else { (Get-Date).AddDays(-1) }
+            $startDate = $endDate.AddDays(-([int]$reportDuration - 1))
+        } else {
+            throw "Invalid report duration specified. Use 'Day', 'Week', 'Month', or a number of days."
+        }
+    }
+}
+
+# Construct start and end date-times
+$startDateTime = "$($startDate.ToString('yyyy-MM-dd')) $startTime"
+if ($endTime -eq "00:00:00") {
+    # Add one day to end date when end time is midnight to include the full end date
+    $endDateTime = "$($endDate.AddDays(1).ToString('yyyy-MM-dd')) $endTime"
+} else {
+    $endDateTime = "$($endDate.ToString('yyyy-MM-dd')) $endTime"
+}
+
+# Construct report title
+$reportTitle = if ($startTime -eq "00:00:00" -and $endTime -eq "00:00:00") {
+    if ($startDate.Date -eq $endDate.Date) {
+        "$baseReportTitle ($($startDate.ToString('yyyy-MM-dd')))"
+    } else {
+        "$baseReportTitle ($($startDate.ToString('yyyy-MM-dd')) - $($endDate.ToString('yyyy-MM-dd')))"
+    }
+} else {
+    "$baseReportTitle ($startDateTime - $endDateTime)"
+}
 
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
@@ -104,13 +205,6 @@ $reportCreateUrl = "$apiBaseUrl`Reports.Create"
 $reportGetStatusUrl = "$apiBaseUrl`Reports.GetReport&id="
 $reportShareUrl = "$apiBaseUrl`Reports.ShareViaEmail"
 
-# Get today's date in the desired format
-$today = Get-Date -Format "yyyy-MM-dd"
-
-# Construct start and end date-times
-$startDateTime = "$today $startTime"
-$endDateTime = "$today $endTime"
-
 # Determine the layout based on the report type
 switch ($reportType) {
     "Internet Usage" { $layout = "overview-internet" }
@@ -121,22 +215,13 @@ switch ($reportType) {
     default { $layout = "overview-internet" }  # Default to Internet Usage if no valid report type is provided
 }
 
-$reportTitle = "$baseReportTitle ($startDateTime - $endDateTime)" # Append date/times to report title
-
 # Define the report creation data
 $reportData = @{
     "Layout" = $layout
     "Title" = $reportTitle
     "StartDate" = $startDateTime
     "EndDate" = $endDateTime
-    "Filter" = @(
-        @{
-            "Type" = "Value"
-            "Semantic" = "User"
-            "Operator" = "Equal"
-            "Values" = $filterUsers  # Use the user-defined filter values
-        }
-    )
+    "Filter" = $filters  # Use the user-defined filters
 } | ConvertTo-Json -Depth 3
 
 # Function to get credentials
