@@ -14,6 +14,12 @@ This script generates a report for a specified time range in the day, filtered b
 
 Here's a [video](https://www.loom.com/share/21cfc712542d434d803c0034f6accad3?sid=0937bcde-9ce0-48a0-9669-45a66601cef7) on how to use it.
 
+## DeleteOldReports.ps1
+
+Fastvue Reporter can accumulate many generated reports over time. This script deletes reports that are older than a specified number of days, months or years (by generated date).
+
+> Example: Keep only the last 6 months of reports by setting `$retentionUnit = "Months"` and `$retentionValue = 6`.
+
 ## AddStaffNamesToKeywordGroup.ps1
 
 Want to know when someone is searching for, or watching videos about your staff members? For example, schools may want to know when students are searching for their teachers to find their social media profiles.
