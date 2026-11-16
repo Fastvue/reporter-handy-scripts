@@ -122,7 +122,20 @@ function Get-UserCredential {
     }
 }
 
-# Replace the existing credential management section with:
+# Check whether the API URL uses an unencrypted (http://) connection.
+# $httpAuthParams is added to every API request below.
+$httpAuthParams = @{}
+if ($apiBaseUrl -match "^\s*http://") {
+    Write-Log "Warning: The Fastvue API URL uses http://, so this connection is not encrypted. If this script runs on the Fastvue server itself, you can ignore this. Otherwise, consider using an https:// URL to protect your credentials and data in transit."
+
+    # PowerShell 6 and later refuse to send credentials over http:// unless this is explicitly allowed.
+    # Windows PowerShell 5.1 has no such check (and does not have this parameter).
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        $httpAuthParams["AllowUnencryptedAuthentication"] = $true
+    }
+}
+
+# Get credentials
 $credentials = Get-UserCredential
 
 # -------------------- Check and Install Active Directory Module --------------------
@@ -263,10 +276,10 @@ $updateKeywordsUrl = "$apiBaseUrl`Settings.Keywords.UpdateIncludes"
 try {
     Write-Log "Checking if the keyword group '$keywordGroupName' already exists..."
     if ($credentials) {
-        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -Credential $credentials -ContentType "application/json" -Body "{}"
+        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -Credential $credentials @httpAuthParams -ContentType "application/json" -Body "{}"
     } else {
         # Use default credentials if running under Task Scheduler
-        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body "{}"
+        $groupsResponse = Invoke-RestMethod -Uri $getKeywordGroupsUrl -Method POST -UseDefaultCredentials @httpAuthParams -ContentType "application/json" -Body "{}"
     }
     # Check if the group exists by name
     $existingGroup = $groupsResponse.Data | Where-Object { $_.Name -eq $keywordGroupName }
@@ -279,9 +292,9 @@ try {
         try {
             $createGroupData = @{ "Name" = $keywordGroupName } | ConvertTo-Json
             if ($credentials) {
-                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -Credential $credentials -ContentType "application/json" -Body $createGroupData
+                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -Credential $credentials @httpAuthParams -ContentType "application/json" -Body $createGroupData
             } else {
-                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body $createGroupData
+                $createGroupResponse = Invoke-RestMethod -Uri $createKeywordGroupUrl -Method POST -UseDefaultCredentials @httpAuthParams -ContentType "application/json" -Body $createGroupData
             }
 
             if ($createGroupResponse.Status -eq 0) {
@@ -317,9 +330,9 @@ try {
 
     
     if ($credentials) {
-        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -Credential $credentials -ContentType "application/json" -Body $updateKeywordsData
+        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -Credential $credentials @httpAuthParams -ContentType "application/json" -Body $updateKeywordsData
     } else {
-        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -UseDefaultCredentials -ContentType "application/json" -Body $updateKeywordsData
+        $updateResponse = Invoke-RestMethod -Uri $updateKeywordsUrl -Method POST -UseDefaultCredentials @httpAuthParams -ContentType "application/json" -Body $updateKeywordsData
     }
 
     if ($updateResponse.Status -eq 0 -and $updateResponse.Data.Success) {

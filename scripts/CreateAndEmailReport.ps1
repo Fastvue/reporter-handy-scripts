@@ -235,15 +235,28 @@ function Get-UserCredential {
     }
 }
 
+# Check whether the API URL uses an unencrypted (http://) connection.
+# $httpAuthParams is added to every API request below.
+$httpAuthParams = @{}
+if ($apiBaseUrl -match "^\s*http://") {
+    Write-Log "Warning: The Fastvue API URL uses http://, so this connection is not encrypted. If this script runs on the Fastvue server itself, you can ignore this. Otherwise, consider using an https:// URL to protect your credentials and data in transit."
+
+    # PowerShell 6 and later refuse to send credentials over http:// unless this is explicitly allowed.
+    # Windows PowerShell 5.1 has no such check (and does not have this parameter).
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        $httpAuthParams["AllowUnencryptedAuthentication"] = $true
+    }
+}
+
 # Get credentials
 $credentials = Get-UserCredential
 
 # Create the report using the API
 try {
     if ($credentials) {
-        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -Credential $credentials
+        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -Credential $credentials @httpAuthParams
     } else {
-        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -UseDefaultCredentials
+        $response = Invoke-RestMethod -Uri $reportCreateUrl -Method POST -ContentType "application/json" -Body $reportData -UseDefaultCredentials @httpAuthParams
     }
     if (-not $response -or -not $response.Data) {
         throw "Failed to create the report. No response or invalid response received."
@@ -260,9 +273,9 @@ function Check-ReportStatus($reportId) {
     $getStatusUrl = "$reportGetStatusUrl$reportId"
     try {
         if ($credentials) {
-            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -Credential $credentials
+            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -Credential $credentials @httpAuthParams
         } else {
-            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -UseDefaultCredentials
+            $statusResponse = Invoke-RestMethod -Uri $getStatusUrl -Method GET -UseDefaultCredentials @httpAuthParams
         }
         
         if (-not $statusResponse -or -not $statusResponse.Data) {
@@ -325,9 +338,9 @@ $emailData = @{
 # Share the report via email
 try {
     if ($credentials) {
-        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -Credential $credentials
+        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -Credential $credentials @httpAuthParams
     } else {
-        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -UseDefaultCredentials
+        $emailResponse = Invoke-RestMethod -Uri $reportShareUrl -Method POST -ContentType "application/json" -Body $emailData -UseDefaultCredentials @httpAuthParams
     }
     
     if (-not $emailResponse) {

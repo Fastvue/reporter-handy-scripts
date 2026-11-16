@@ -128,15 +128,15 @@ function Invoke-ReporterApi {
     try {
         if ($credentials) {
             if ($method -eq "POST") {
-                return Invoke-RestMethod -Uri $uri -Method POST -Credential $credentials -ContentType "application/json" -Body $body
+                return Invoke-RestMethod -Uri $uri -Method POST -Credential $credentials @httpAuthParams -ContentType "application/json" -Body $body
             } else {
-                return Invoke-RestMethod -Uri $uri -Method GET -Credential $credentials
+                return Invoke-RestMethod -Uri $uri -Method GET -Credential $credentials @httpAuthParams
             }
         } else {
             if ($method -eq "POST") {
-                return Invoke-RestMethod -Uri $uri -Method POST -UseDefaultCredentials -ContentType "application/json" -Body $body
+                return Invoke-RestMethod -Uri $uri -Method POST -UseDefaultCredentials @httpAuthParams -ContentType "application/json" -Body $body
             } else {
-                return Invoke-RestMethod -Uri $uri -Method GET -UseDefaultCredentials
+                return Invoke-RestMethod -Uri $uri -Method GET -UseDefaultCredentials @httpAuthParams
             }
         }
     } catch {
@@ -202,6 +202,19 @@ function Resolve-ReportItems {
     }
 
     return $items
+}
+
+# Check whether the API URL uses an unencrypted (http://) connection.
+# $httpAuthParams is added to every API request below.
+$httpAuthParams = @{}
+if ($apiBaseUrl -match "^\s*http://") {
+    Write-Log "Warning: The Fastvue API URL uses http://, so this connection is not encrypted. If this script runs on the Fastvue server itself, you can ignore this. Otherwise, consider using an https:// URL to protect your credentials and data in transit."
+
+    # PowerShell 6 and later refuse to send credentials over http:// unless this is explicitly allowed.
+    # Windows PowerShell 5.1 has no such check (and does not have this parameter).
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        $httpAuthParams["AllowUnencryptedAuthentication"] = $true
+    }
 }
 
 $credentials = Get-UserCredential
